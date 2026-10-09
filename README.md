@@ -1,284 +1,304 @@
-# Certificate Generator
+# Certificate Generator API
 
-A simple REST API that takes an Excel file of participant names and generates personalised PDF certificates for each person — in bulk.
+Hey! 👋 Welcome to the Certificate Generator — a backend API that takes a list of participants from an Excel file and automatically generates a personalised PDF certificate for each one. No more doing it one by one.
 
----
-
-## Table of Contents
-
-1. [Project Overview](#project-overview)
-2. [Folder Structure](#folder-structure)
-3. [How to Set Up the Project](#how-to-set-up-the-project)
-4. [How to Run the Application](#how-to-run-the-application)
-5. [How to Submit a Certificate Generation Request](#how-to-submit-a-certificate-generation-request)
-6. [How to Retrieve Generated Certificates](#how-to-retrieve-generated-certificates)
-7. [How to Run Tests](#how-to-run-tests)
-8. [Important Design Decisions](#important-design-decisions)
+This README will walk you through everything — setting it up, running it, using it, and understanding why things were built the way they were. Just follow along top to bottom and you'll have it running in a few minutes.
 
 ---
 
-## Project Overview
+## What does this actually do?
 
-You upload an `.xlsx` Excel file containing participant data (name, course, completion date). The API reads each row, overlays the text onto a PDF certificate template, and saves one PDF per person. You then download all the certificates as a single ZIP file using a batch ID returned by the upload step.
+Here's the basic flow:
+
+1. You prepare an Excel file with your participants' names, course names, and completion dates.
+2. You upload it to the API.
+3. The API generates a PDF certificate for each participant — in the background, so you don't have to wait.
+4. You check the status to see how many succeeded (and if any failed, you'll know exactly who and why).
+5. You download all the certificates as a single ZIP file.
+
+That's it. Simple, fast, and handles bulk generation without breaking a sweat.
 
 ---
 
-## Folder Structure
+## What's inside the project
+
+Before you run anything, here's a quick map of the codebase so you know where everything lives:
 
 ```
 certificate-generator/
 │
 ├── app/
-│   ├── __init__.py          # Makes `app` a Python package
-│   ├── main.py              # FastAPI app — defines the /upload and /download endpoints
-│   └── generator.py         # Core logic — reads the PDF template and writes text onto it
+│   ├── main.py        → The FastAPI app. All three API endpoints live here.
+│   ├── generator.py   → The actual PDF generation logic. Reads the template and writes text onto it.
+│   ├── database.py    → SQLite setup. Creates the jobs and certificates tables.
+│   └── __init__.py    → Just marks this folder as a Python package.
 │
-├── font/
-│   ├── CormorantGaramond-BoldItalic.ttf      # Used for the recipient name
-│   ├── CormorantGaramond-Medium.ttf          # Used for course name and date
-│   └── ...                                   # Other font variants (not used directly)
-│
+├── font/              → Cormorant Garamond fonts used on the certificate.
 ├── templates/
-│   └── certificate.pdf      # The blank certificate template all PDFs are built from
+│   └── certificate.pdf  → The blank certificate design. All generated PDFs are built on top of this.
 │
-├── output/                  # Created automatically — stores generated certificate folders
+├── test_files/        → Five ready-made Excel files you can use to test different scenarios.
+├── tests/
+│   ├── conftest.py    → Shared fixtures and helpers for the test suite.
+│   └── test_api.py    → 39 tests covering every important part of the API.
 │
-├── requirements.txt         # Python dependencies
-└── virt/                    # Python virtual environment (local, not committed to git)
+├── requirements.txt   → All Python dependencies.
+└── .gitignore         → Keeps the virtual env, generated files, and DB out of git.
 ```
 
 ---
 
-## How to Set Up the Project
+## Setting it up on your machine
 
-### Prerequisites
+### What you need first
 
-- Python **3.11** or higher
-- `pip` (comes with Python)
+- **Python 3.11 or higher** — check with `python --version`
+- **pip** — comes bundled with Python, so you likely already have it
 
-### Steps
-
-**1. Clone or download the project**
+### Step 1 — Clone the repo
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/gi3t-bot/certificate-generator.git
 cd certificate-generator
 ```
 
-**2. Create a virtual environment**
+### Step 2 — Create a virtual environment
+
+A virtual environment keeps the project's dependencies isolated from your system Python. Always a good idea.
 
 ```bash
 python -m venv virt
 ```
 
-**3. Activate the virtual environment**
+### Step 3 — Activate the virtual environment
 
-- **Windows:**
-  ```bash
-  virt\Scripts\activate
-  ```
-- **macOS / Linux:**
-  ```bash
-  source virt/bin/activate
-  ```
+You need to activate it every time you open a new terminal for this project.
 
-**4. Install dependencies**
+**On Windows:**
+```bash
+virt\Scripts\activate
+```
+
+**On macOS / Linux:**
+```bash
+source virt/bin/activate
+```
+
+You'll know it's active when you see `(virt)` at the start of your terminal prompt.
+
+### Step 4 — Install the dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-That installs:
+This installs six packages — here's what each one does:
 
-| Package            | Purpose                        |
-| ------------------ | ------------------------------ |
-| `fastapi`          | Web framework for the REST API |
-| `uvicorn`          | ASGI server to run FastAPI     |
-| `python-multipart` | Required for file uploads      |
-| `openpyxl`         | Reads `.xlsx` Excel files      |
-| `reportlab`        | Draws text onto a PDF canvas   |
-| `pypdf`            | Reads and merges PDF pages     |
+| Package | What it's for |
+| ------------------ | ----------------------------------------------- |
+| `fastapi` | The web framework the API is built on |
+| `uvicorn` | The server that runs the FastAPI app |
+| `python-multipart` | Needed for file uploads to work in FastAPI |
+| `openpyxl` | Reads the Excel `.xlsx` files you upload |
+| `reportlab` | Draws the text (name, course, date) onto a PDF canvas |
+| `pypdf` | Merges that text canvas onto the certificate template |
+
+That's all the setup you need. No database server, no Docker, nothing external.
 
 ---
 
-## How to Run the Application
+## Running the application
 
-Make sure your virtual environment is active, then run:
+Once the virtual environment is active and dependencies are installed, just run:
 
 ```bash
 uvicorn app.main:app --reload
 ```
 
-The API will start at: **http://127.0.0.1:8000**
+The `--reload` flag means the server automatically restarts whenever you change a file — very handy during development.
 
-You can also open the interactive API docs in your browser at:
+You'll see something like this in your terminal:
+```
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+```
 
-- **http://127.0.0.1:8000/docs** (Swagger UI — easiest way to test manually)
-- **http://127.0.0.1:8000/redoc**
+Now open your browser and go to:
+
+**👉 http://127.0.0.1:8000/docs**
+
+This is the Swagger UI — an interactive page where you can call every endpoint directly from the browser without needing Postman or curl. I'd recommend using this to try things out.
 
 ---
 
-## How to Submit a Certificate Generation Request
+## Using the API — a complete walkthrough
 
 ### Step 1 — Prepare your Excel file
 
-Create an `.xlsx` file with the following columns (header names are **case-insensitive**):
+Create a `.xlsx` file (not `.csv`, not `.xls` — it must be `.xlsx`). The column headers are **case-insensitive**, so `NAME`, `Name`, and `name` all work.
 
-| Column            | Required    | Description                   |
-| ----------------- | ----------- | ----------------------------- |
-| `Name`            | ✅ Yes      | Recipient's full name         |
-| `Course`          | ✅ Yes      | Course or programme name      |
-| `Completion Date` | ❌ Optional | Date shown on the certificate |
+| Column | Required? | What it does |
+| ----------------- | --------- | ----------------------------------------- |
+| `Name` | ✅ Yes | The participant's full name on the certificate |
+| `Course` | ✅ Yes | The course or programme they completed |
+| `Completion Date` | ❌ Optional | The date printed on the certificate |
 
-Example:
+Your file can look like this:
 
-| Name          | Course              | Completion Date |
+| Name | Course | Completion Date |
 | ------------- | ------------------- | --------------- |
-| Alice Johnson | Python Fundamentals | 2024-09-01      |
-| Bob Smith     | Data Science 101    | 2024-09-15      |
+| Alice Johnson | Python Fundamentals | 01 September 2024 |
+| Bob Smith | Data Science 101 | 15 September 2024 |
 
-> Rows with an empty `Name` cell are automatically skipped.
+A couple of things worth knowing:
+- If a row has an empty `Name` cell, it's **silently skipped** — no error thrown, just ignored.
+- If `Completion Date` is missing for a row or the whole column doesn't exist, the date just won't appear on that certificate. Everything else still works fine.
 
-### Step 2 — Upload the file
+There are also five ready-made test files in the `test_files/` folder if you want to jump straight in without creating your own.
 
-**Using the Swagger UI:**
+---
 
-1. Open http://127.0.0.1:8000/docs
-2. Click on `POST /upload`
-3. Click **Try it out**
-4. Upload your `.xlsx` file and click **Execute**
+### Step 2 — Upload the file and create a job
 
-### Step 3 — Note the batch ID
+Hit **`POST /upload`** in Swagger, upload your `.xlsx` file, and click Execute.
 
-A successful response looks like this:
+The API will immediately respond with:
 
 ```json
 {
-  "job_id": "a3f1c2d4-...",
+  "job_id": "a3f1c2d4-5678-...",
   "total": 2
 }
 ```
 
-- `job_id` — a unique ID for this job (use it to check status and download)
-- `total` — how many valid recipients were found in the file
+- **`job_id`** — hold onto this, you'll need it for the next two steps
+- **`total`** — how many valid recipients were found in your file
+
+The generation starts in the background right after this response. The API doesn't make you wait — it just starts working and you can check on it whenever you want.
 
 ---
 
-## How to Check Job Status
+### Step 3 — Check the job status
 
-Use the `job_id` returned by `/upload` to check progress and see per-recipient results.
+Hit **`GET /job/{job_id}`** and paste in the `job_id` from the previous step.
 
-```
-GET http://127.0.0.1:8000/job/{job_id}
-```
-
-Example response:
+You'll get back something like this:
 
 ```json
 {
-  "job_id":  "a3f1c2d4-...",
-  "status":  "done",
-  "total":   3,
+  "job_id": "a3f1c2d4-5678-...",
+  "status": "done",
+  "total": 3,
   "success": 2,
-  "failed":  1,
-  "successful":  [{"name": "Alice Johnson", "course": "Python 101"}],
-  "failed_list": [{"name": "Bob Smith", "course": "ML Basics", "reason": "..."}]
+  "failed": 1,
+  "successful": [
+    { "name": "Alice Johnson", "course": "Python Fundamentals" }
+  ],
+  "failed_list": [
+    { "name": "Bob Smith", "course": "Data Science 101", "reason": "..." }
+  ]
 }
 ```
 
-Possible `status` values: `processing` → `done`
+The `status` field will be either `processing` (still going) or `done` (finished).
+
+What's really useful here is the `failed_list` — if a certificate failed for any reason, you'll see exactly whose it was and why. A single failure **never** stops the rest of the batch from being processed.
 
 ---
 
-## How to Retrieve Generated Certificates
+### Step 4 — Download the certificates
 
-Use the `job_id` to download all successful certificates as a single ZIP file.
+Once the status is `done`, hit **`GET /download/{job_id}`** with the same `job_id`.
 
-**Using the Swagger UI:**
-
-1. Open http://127.0.0.1:8000/docs
-2. Click on `GET /download/{job_id}`
-3. Click **Try it out**
-4. Paste the `job_id` and click **Execute**
-5. Download the returned ZIP file
-
-The ZIP contains one PDF per successful recipient, named like:
+You'll get a ZIP file containing one PDF per successful recipient, named like:
 
 ```
 001_Alice Johnson.pdf
 002_Bob Smith.pdf
 ```
 
+The ZIP only includes the successful ones — failed ones are logged in the status endpoint but won't appear in the download.
+
+You can call the download endpoint as many times as you want — the ZIP is rebuilt fresh each time from the files on disk.
+
 ---
 
-## How to Run Tests
+## Running the tests
 
-The project includes an automated test suite (`tests/test_api.py`) with **39 tests** covering all critical paths.
-
-### Install test dependencies (one-time)
+The project has a full test suite — 39 tests covering every important scenario. Before running them, install the test dependencies if you haven't already:
 
 ```bash
 pip install pytest httpx
 ```
 
-### Run all tests
+Then run:
 
 ```bash
 pytest tests/ -v
 ```
 
-### What is tested
-
-| Test class | What it covers |
-| --------------------------------------- | ----------------------------------------------------------------- |
-| `TestCreateGenerationJob`               | Happy-path upload, UUID job ID, unique IDs, optional date column  |
-| `TestInputValidation`                   | Wrong file type, missing columns, empty workbook, corrupt bytes   |
-| `TestCertificateGeneration`             | PDF count on disk, file sizes, sequential naming, long text       |
-| `TestJobStatus`                         | Status fields, done state, success count, unknown/invalid job IDs |
-| `TestIndividualCertificateFailure`      | One failure doesn't stop others, error reason in response, special chars |
-| `TestRetrieveGeneratedCertificates`     | ZIP content, only successful PDFs, 404/400 errors, repeat downloads |
-
-Tests also run against the five real Excel files in `test_files/` to validate end-to-end behaviour.
-
-### Expected output
+You should see all 39 tests pass in about 3 seconds:
 
 ```
 39 passed in ~3s
 ```
 
-## Important Design Decisions
+Here's what each test group covers:
 
-### 1. PDF overlay approach (no template re-rendering)
+| Test class | What it checks |
+| --------------------------------------- | ---------------------------------------------------------------- |
+| `TestCreateGenerationJob` | Upload works, returns valid UUID job ID, each upload is unique |
+| `TestInputValidation` | Wrong file types, missing columns, empty/corrupt files rejected |
+| `TestCertificateGeneration` | Correct number of PDFs on disk, file sizes, sequential naming |
+| `TestJobStatus` | Status fields present, counts correct, invalid IDs handled |
+| `TestIndividualCertificateFailure` | One failure doesn't stop others, error reason is returned |
+| `TestRetrieveGeneratedCertificates` | ZIP has right PDFs, only successes included, repeat downloads work |
 
-Instead of building certificates from scratch, the app uses an existing `certificate.pdf` as a design template. Text (name, course, date) is drawn onto a transparent in-memory canvas using **ReportLab**, then merged on top of the template using **pypdf**. This keeps the visual design completely separate from the code — designers can update the template PDF without touching any Python.
+The tests also use the five real Excel files in `test_files/` to run proper end-to-end checks.
 
-### 2. SQLite database for job and certificate tracking
+---
 
-Every upload creates a `Job` record and one `Certificate` record per recipient in a local SQLite database (`certificates.db`). This gives the API a proper status endpoint (`GET /job/{job_id}`) that can report exactly which recipients succeeded and which failed — and why. SQLite was chosen because it needs zero setup, ships with Python, and is a real relational database.
+## Design decisions — and why I made them
 
-### 3. Background processing via FastAPI BackgroundTasks
+These are the choices that shaped how the project is built. If you're reviewing this or thinking of extending it, this section will save you a lot of "why was this done this way?" time.
 
-The `/upload` endpoint saves the job to the database and returns the `job_id` immediately. The actual PDF generation runs in a `BackgroundTask` after the response is sent. This means large batches don't time out the HTTP connection. The client polls `GET /job/{job_id}` to check progress.
+### 1. PDF overlay instead of building from scratch
 
-### 4. Per-certificate failure isolation
+I didn't generate certificates from a blank page. Instead, `certificate.pdf` in the `templates/` folder is a pre-designed PDF that acts as the visual base. The code draws the recipient's name, course, and date onto a transparent in-memory canvas using **ReportLab**, then merges that canvas on top of the template using **pypdf**.
 
-Inside `process_job()`, each certificate is generated inside its own `try/except`. If one fails (corrupted name, disk error, etc.) the error is written to that certificate's database row and processing continues for the remaining recipients. The final job status shows exactly who succeeded and who failed.
+Why? Because it completely separates design from code. If you want a new certificate design, you just swap out the template PDF — you don't touch a single line of Python.
 
-### 5. Auto-fitting text
+### 2. SQLite as the relational database
 
-Long names or course titles won't overflow the certificate. The `draw_fitted()` function in `generator.py` gradually shrinks the font size until the text fits within the defined maximum width, with a hard floor (`min_size`) so text is never unreadably small.
+Every upload creates a `Job` row in the database, and every recipient gets a `Certificate` row. This is what powers the status endpoint — you can always look up exactly what happened to each certificate.
 
-### 6. Fonts
+SQLite was the right call here: it's a real relational database, ships built into Python, needs zero configuration, and works perfectly for this scale. No Postgres, no Docker container, nothing to set up.
 
-The **Cormorant Garamond** font family is used throughout for an elegant, formal look suitable for certificates:
+### 3. Background processing so the client isn't left waiting
 
-- **Bold Italic** for the recipient's name (larger, prominent)
-- **Medium** for the course name and completion date (smaller, supporting text)
+When you upload a file with 200 participants, you don't want to stare at a loading spinner for 30 seconds. So `/upload` saves the job to the database, queues the generation as a background task, and returns the `job_id` **immediately**. The PDFs are created in the background while you get on with things. You poll `/job/{job_id}` when you want to know if it's done.
 
-### 7. Excel column detection
+### 4. Per-certificate failure isolation — one bad row doesn't ruin the batch
 
-Column detection is done by matching header names (case-insensitive). `Name` and `Course` are required; `Completion Date` is optional. Rows with blank names are silently skipped so a partially-filled sheet doesn't cause errors.
+Inside the background task, each certificate is generated inside its own `try/except` block. If something goes wrong for one recipient (weird characters in the name, a file system hiccup, anything), the error gets recorded against that specific certificate row in the database, and the loop moves on to the next one. Nothing crashes, nothing stops. The status endpoint will show you exactly who failed and what the reason was.
 
-### 8. Zip-on-demand download
+### 5. Auto-fitting text for long names and course titles
 
-The ZIP file is created fresh each time `GET /download/{job_id}` is called using Python's built-in `shutil.make_archive`. No ZIP is stored persistently, keeping disk usage clean.
+Not everyone has a short name. "Venkatasubramanian Raghunathan Iyer" is a real name and it needs to fit on the certificate without overflowing. The `draw_fitted()` function in `generator.py` starts at the default font size and shrinks it one point at a time until the text fits within the allowed width. There's a minimum size floor too, so text is never unreadably tiny.
+
+### 6. Fonts — Cormorant Garamond
+
+The certificate uses the **Cormorant Garamond** font family — a classic serif that looks elegant on formal documents. The recipient's name is in Bold Italic (larger, prominent), and the course name and date are in Medium (smaller, supporting). The `.ttf` files are bundled in the `font/` folder so the project works out of the box without any system font installation.
+
+### 7. Excel column detection is flexible
+
+Column headers are matched in lowercase after stripping whitespace, so `Name`, `NAME`, `name`, and `  Name  ` all work the same way. `Name` and `Course` are required. `Completion Date` is optional — if it's missing from the file entirely, certificates are still generated, just without a date.
+
+### 8. The ZIP is built on demand, not stored
+
+Every time you call `/download/{job_id}`, the ZIP is created fresh from the files in the `output/{job_id}/` folder using Python's built-in `shutil.make_archive`. Nothing is pre-zipped and stored. This keeps disk usage simple and means you can download the same batch multiple times without any issues.
+
+---
+
+## Questions?
+
+If something isn't working or you want to understand a specific part of the code better, feel free to raise an issue or reach out directly.
